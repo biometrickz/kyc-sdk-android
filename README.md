@@ -17,8 +17,6 @@
 Внутри файла BiometricDialog вы можете по необходимости изменять данные ссылок:
 ```
 BASE_URL - это основная ссылка
-RESULT_SUCCESS_URL - это ссылка для сравнения если все прошло успешно
-RESULT_FAILURE_URL - это ссылка для сравнения если что-то пошло не так
 ```
 
 ## Инструкция для работы
@@ -26,7 +24,6 @@ RESULT_FAILURE_URL - это ссылка для сравнения если чт
 BiometricDialog.show(token, supportFragmentManager, this, object : OnUrlChangeListener {
             override fun onResultSuccess(result: String) {
                 // Если все успешно
-                BiometricDialog.dismiss()
             }
 
             override fun onResultFailure(reason: String) {

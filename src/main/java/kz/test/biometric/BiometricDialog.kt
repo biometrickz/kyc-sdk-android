@@ -22,12 +22,15 @@ import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.LifecycleOwner
 import kz.test.biometric.databinding.DialogBiometricBinding
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
 
-private const val BASE_URL = "https://test.biometric.kz/?"
-private const val RESULT_SUCCESS_URL = "https://test.biometric.kz/test-ok.html"
-private const val RESULT_FAILURE_URL = "https://test.biometric.kz/test-fail.html"
+private const val BASE_URL = "https://test.biometric.kz/short?"
 private const val REQUEST_KEY = "biometricKey"
 private const val KEY_URL_RESULT = "keyUrlResult"
+private const val KEY_SESSION_RESULT = "keySessionResult"
 private const val SUCCESS = "success"
 private const val FAILURE = "failure"
 
@@ -88,6 +91,40 @@ class BiometricDialog : DialogFragment(R.layout.dialog_biometric) {
         }
     }
 
+    private fun getSession(session: String) {
+        Thread {
+            try {
+                val url = URL("https://test.biometric.kz/v1/main/session/$session/")
+                val conn: HttpURLConnection = url.openConnection() as HttpURLConnection
+                conn.connect()
+                var br: BufferedReader? = null
+                if (conn.responseCode in 100..399) {
+                    br = BufferedReader(InputStreamReader(conn.inputStream))
+                    val strCurrentLine: String = br.readLines().toString().replace(",", "")
+                    parentFragmentManager.setFragmentResult(
+                        REQUEST_KEY,
+                        bundleOf(KEY_URL_RESULT to SUCCESS, KEY_SESSION_RESULT to strCurrentLine)
+                    )
+                } else {
+                    br = BufferedReader(InputStreamReader(conn.errorStream))
+                    val strCurrentLine: String = br.readLines().toString().replace(",", "")
+                    parentFragmentManager.setFragmentResult(
+                        REQUEST_KEY,
+                        bundleOf(KEY_URL_RESULT to FAILURE, KEY_SESSION_RESULT to strCurrentLine)
+                    )
+                }
+            } catch (e: Exception) {
+            }
+        }.start()
+    }
+
+    private fun extractSession(url: String): String {
+        val text = url.substring(url.indexOf("session", ignoreCase = true) + 8, url.length)
+        return text
+    }
+
+    private var resultCount = 0
+
     @SuppressLint("SetJavaScriptEnabled")
     private fun DialogBiometricBinding.webViewSetup() {
         webView.apply {
@@ -98,21 +135,24 @@ class BiometricDialog : DialogFragment(R.layout.dialog_biometric) {
 
                 override fun onProgressChanged(view: WebView?, newProgress: Int) {
                     view?.let {
-                        when (it.url) {
-                            RESULT_SUCCESS_URL -> parentFragmentManager.setFragmentResult(
+                        if (it.url?.contains("test-ok") == true) {
+                            getSession(extractSession(it.url.orEmpty()))
+                        } else if (it.url?.contains("test-fail") == true) {
+                            parentFragmentManager.setFragmentResult(
                                 REQUEST_KEY,
-                                bundleOf(KEY_URL_RESULT to SUCCESS)
+                                bundleOf(
+                                    KEY_URL_RESULT to FAILURE,
+                                    KEY_SESSION_RESULT to FAILURE
+                                )
                             )
-                            RESULT_FAILURE_URL -> parentFragmentManager.setFragmentResult(
-                                REQUEST_KEY,
-                                bundleOf(KEY_URL_RESULT to FAILURE)
-                            )
+                        } else {
                         }
                     }
                     super.onProgressChanged(view, newProgress)
+                    resultCount++
                 }
             }
-            loadUrl("${BASE_URL}api_key=$token")
+            loadUrl("${BASE_URL}api_key=$token&webview=true")
             settings.javaScriptEnabled = true
             settings.javaScriptCanOpenWindowsAutomatically = true
             settings.domStorageEnabled = true
@@ -145,12 +185,14 @@ class BiometricDialog : DialogFragment(R.layout.dialog_biometric) {
             }
             fragmentManager.setFragmentResultListener(REQUEST_KEY, lifecycleOwner) { _, bundle ->
                 val type = bundle.getString(KEY_URL_RESULT)
+                val sessionResult = bundle.getString(KEY_SESSION_RESULT).orEmpty()
                 if (type != null) {
                     when (type) {
-                        SUCCESS -> onUrlChanged.onResultSuccess(SUCCESS)
-                        FAILURE -> onUrlChanged.onResultFailure(FAILURE)
+                        SUCCESS -> onUrlChanged.onResultSuccess(sessionResult)
+                        FAILURE -> onUrlChanged.onResultFailure(sessionResult)
                     }
                 }
+                instance.dismiss()
             }
         }
 
