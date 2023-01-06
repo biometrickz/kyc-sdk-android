@@ -1,4 +1,4 @@
-plugins {
+/buildplugins {
     id 'com.android.library'
     id 'kotlin-android'
 }

@@ -2,19 +2,21 @@ package kz.test.biometric
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Context
+import android.content.Context.CAMERA_SERVICE
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.hardware.Camera
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
-import android.webkit.PermissionRequest
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.webkit.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.os.bundleOf
@@ -22,12 +24,49 @@ import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.LifecycleOwner
 import kz.test.biometric.databinding.DialogBiometricBinding
+import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val BASE_URL = "https://test.biometric.kz/short?"
+
+//private const val BASE_URL = "https://test.biometric.kz/document?"
+private const val BASE_URL = "htpackage kz.test.biometric
+
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.Context.CAMERA_SERVICE
+import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.hardware.Camera
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
+import android.os.Bundle
+import android.util.Log
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.view.Window
+import android.webkit.*
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
+import androidx.core.os.bundleOf
+import androidx.fragment.app.DialogFragment
+import androidx.fragment.app.FragmentManager
+import androidx.lifecycle.LifecycleOwner
+import kz.test.biometric.databinding.DialogBiometricBinding
+import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
+
+
+//private const val BASE_URL = "https://test.biometric.kz/document?"
+private const val BASE_URL = "https://test.biometric.kz/demo/short?"
 private const val REQUEST_KEY = "biometricKey"
 private const val KEY_URL_RESULT = "keyUrlResult"
 private const val KEY_SESSION_RESULT = "keySessionResult"
@@ -94,17 +133,29 @@ class BiometricDialog : DialogFragment(R.layout.dialog_biometric) {
     private fun getSession(session: String) {
         Thread {
             try {
-                val url = URL("https://test.biometric.kz/v1/main/session/$session/")
+                val url = URL("https://test.biometric.kz/v1/main/session/$session")
                 val conn: HttpURLConnection = url.openConnection() as HttpURLConnection
                 conn.connect()
                 var br: BufferedReader? = null
                 if (conn.responseCode in 100..399) {
                     br = BufferedReader(InputStreamReader(conn.inputStream))
                     val strCurrentLine: String = br.readLines().toString().replace(",", "")
-                    parentFragmentManager.setFragmentResult(
-                        REQUEST_KEY,
-                        bundleOf(KEY_URL_RESULT to SUCCESS, KEY_SESSION_RESULT to strCurrentLine)
-                    )
+
+                    if (strCurrentLine.contains("\"result\":false")) {
+                        parentFragmentManager.setFragmentResult(
+                            REQUEST_KEY,
+                            bundleOf(KEY_URL_RESULT to FAILURE, KEY_SESSION_RESULT to strCurrentLine)
+                        )
+                    } else if (strCurrentLine.contains("\"result\":true")) {
+                        parentFragmentManager.setFragmentResult(
+                            REQUEST_KEY,
+                            bundleOf(KEY_URL_RESULT to SUCCESS, KEY_SESSION_RESULT to strCurrentLine))
+                    } else {
+                        parentFragmentManager.setFragmentResult(
+                            REQUEST_KEY,
+                            bundleOf(KEY_URL_RESULT to FAILURE, KEY_SESSION_RESULT to strCurrentLine)
+                        )
+                    }
                 } else {
                     br = BufferedReader(InputStreamReader(conn.errorStream))
                     val strCurrentLine: String = br.readLines().toString().replace(",", "")
@@ -113,8 +164,7 @@ class BiometricDialog : DialogFragment(R.layout.dialog_biometric) {
                         bundleOf(KEY_URL_RESULT to FAILURE, KEY_SESSION_RESULT to strCurrentLine)
                     )
                 }
-            } catch (e: Exception) {
-            }
+            } catch (e: Exception) { }
         }.start()
     }
 
@@ -129,6 +179,7 @@ class BiometricDialog : DialogFragment(R.layout.dialog_biometric) {
     private fun DialogBiometricBinding.webViewSetup() {
         webView.apply {
             webChromeClient = object : WebChromeClient() {
+
                 override fun onPermissionRequest(request: PermissionRequest) {
                     request.grant(request.resources)
                 }
@@ -152,12 +203,15 @@ class BiometricDialog : DialogFragment(R.layout.dialog_biometric) {
                     resultCount++
                 }
             }
-            loadUrl("${BASE_URL}api_key=$token&webview=true")
             settings.javaScriptEnabled = true
             settings.javaScriptCanOpenWindowsAutomatically = true
             settings.domStorageEnabled = true
             settings.allowContentAccess = true
             settings.mediaPlaybackRequiresUserGesture = false
+
+            settings.cacheMode = WebSettings.LOAD_NO_CACHE
+            clearCache(true)
+
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(
                     view: WebView?,
@@ -166,6 +220,17 @@ class BiometricDialog : DialogFragment(R.layout.dialog_biometric) {
                     return super.shouldOverrideUrlLoading(view, request)
                 }
             }
+            loadUrl("${BASE_URL}api_key=$token&webview=true")
+        }
+    }
+
+    fun getCameraId(facing: Int): String {
+        val manager = requireActivity().getSystemService(CAMERA_SERVICE) as CameraManager
+
+        return manager.cameraIdList.first {
+            manager
+                .getCameraCharacteristics(it)
+                .get(CameraCharacteristics.LENS_FACING) == facing
         }
     }
 
